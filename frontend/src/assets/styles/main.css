@@ -1,0 +1,176 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Dark mode (default) ── */
+:root,
+[data-theme="dark"] {
+  --fortuna-primary: #FCEE09;
+  --fortuna-primary-dark: #D4C808;
+  --fortuna-bg: #050A0E;
+  --fortuna-surface: #0D1828;
+  --fortuna-text: #FAFAFA;
+  --fortuna-text-secondary: #6080A0;
+  --fortuna-border: #1E3048;
+  --fortuna-success: #00F0FF;
+  --fortuna-warning: #FCEE09;
+  --fortuna-danger: #FF003C;
+
+  /* Tailwind cp-* RGB channels */
+  --cp-black:    5 10 14;
+  --cp-surface:  13 24 40;
+  --cp-surface2: 18 31 51;
+  --cp-border:   30 48 72;
+  --cp-text:     250 250 250;
+  --cp-muted:    96 128 160;
+  --cp-yellow:   252 238 9;
+  --cp-cyan:     0 240 255;
+  --cp-red:      255 0 60;
+  --cp-green:    0 192 96;
+
+  --scrollbar-track: #0D1828;
+  --scrollbar-thumb: #1E3048;
+  --scrollbar-thumb-hover: #00F0FF;
+  --input-color: #FAFAFA;
+  --input-caret: #FCEE09;
+  --input-placeholder: #4a6080;
+  --selection-bg: #FCEE09;
+  --selection-color: #050A0E;
+}
+
+/* ── Light mode ── */
+[data-theme="light"] {
+  --fortuna-primary: #B8970A;
+  --fortuna-primary-dark: #8F7408;
+  --fortuna-bg: #F0F4F8;
+  --fortuna-surface: #FFFFFF;
+  --fortuna-text: #0F1923;
+  --fortuna-text-secondary: #5A738A;
+  --fortuna-border: #C8D4E0;
+  --fortuna-success: #006B7A;
+  --fortuna-warning: #B8970A;
+  --fortuna-danger: #C8002E;
+
+  /* Tailwind cp-* RGB channels */
+  --cp-black:    240 244 248;
+  --cp-surface:  255 255 255;
+  --cp-surface2: 232 237 243;
+  --cp-border:   200 212 224;
+  --cp-text:     15 25 35;
+  --cp-muted:    90 115 138;
+  --cp-yellow:   184 151 10;
+  --cp-cyan:     0 107 122;
+  --cp-red:      200 0 46;
+  --cp-green:    0 120 64;
+
+  --scrollbar-track: #E8EDF3;
+  --scrollbar-thumb: #C8D4E0;
+  --scrollbar-thumb-hover: #006B7A;
+  --input-color: #0F1923;
+  --input-caret: #B8970A;
+  --input-placeholder: #7A96B0;
+  --selection-bg: #B8970A;
+  --selection-color: #FFFFFF;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--fortuna-bg);
+  color: var(--fortuna-text);
+  line-height: 1.6;
+}
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Theme-aware input text */
+input, textarea, select {
+  color: var(--input-color);
+  caret-color: var(--input-caret);
+  background-color: transparent;
+}
+input::placeholder, textarea::placeholder {
+  color: var(--input-placeholder);
+}
+
+/* Theme-aware scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+/* Text selection */
+::selection { background: var(--selection-bg); color: var(--selection-color); }
+
+/* ── Markdown prose styles for chat messages ── */
+.prose-chat { line-height: 1.65; }
+.prose-chat p { margin-bottom: 0.5em; }
+.prose-chat p:last-child { margin-bottom: 0; }
+.prose-chat strong { font-weight: 600; }
+.prose-chat em { font-style: italic; }
+.prose-chat h1, .prose-chat h2, .prose-chat h3, .prose-chat h4 {
+  font-weight: 700;
+  margin-top: 0.75em;
+  margin-bottom: 0.35em;
+  line-height: 1.3;
+}
+.prose-chat h1 { font-size: 1.15em; }
+.prose-chat h2 { font-size: 1.05em; }
+.prose-chat h3 { font-size: 0.95em; }
+.prose-chat ul {
+  list-style-type: disc;
+  padding-left: 1.25em;
+  margin-bottom: 0.5em;
+}
+.prose-chat ol {
+  list-style-type: decimal;
+  padding-left: 1.25em;
+  margin-bottom: 0.5em;
+}
+.prose-chat li { margin-bottom: 0.2em; }
+.prose-chat code {
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgb(var(--cp-border) / 0.6);
+  color: rgb(var(--cp-cyan));
+}
+.prose-chat pre {
+  background: rgb(var(--cp-surface2));
+  border: 1px solid rgb(var(--cp-border));
+  border-radius: 6px;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.prose-chat pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.85em;
+}
+.prose-chat a {
+  color: rgb(var(--cp-cyan));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-chat blockquote {
+  border-left: 3px solid rgb(var(--cp-border));
+  padding-left: 0.75em;
+  color: rgb(var(--cp-muted));
+  margin: 0.5em 0;
+}
+.prose-chat hr {
+  border: none;
+  border-top: 1px solid rgb(var(--cp-border));
+  margin: 0.75em 0;
+}
