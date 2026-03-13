@@ -273,7 +273,7 @@ function openVisualization() {
   if (!vizId) return
   // Pass msgId so VisualizationView knows to show this specific version's HTML
   // rather than always defaulting to the latest current_draft_html.
-  router.push({ path: `/visualization/${vizId}`, query: { msgId: props.message.message_id } })
+  router.push({ path: `/editor/${vizId}`, query: { msgId: props.message.message_id } })
 }
 
 // ── Formatting helpers ─────────────────────────────────────────────────────────

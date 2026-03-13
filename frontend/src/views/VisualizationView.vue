@@ -199,12 +199,13 @@ onMounted(async () => {
     try {
       const response = await chatService.getSession(vizId)
       const session = response.data
-      const msg = session?.messages?.find(
-        m => m.message_type === 'html_output' && m.message_id === msgId
-      )
-      if (msg?.content) {
-        viewingHtml.value = msg.content
-        isDraftHistory.value = true
+      const htmlOutputs = session?.messages?.filter(m => m.message_type === 'html_output') ?? []
+      const msgIndex = htmlOutputs.findIndex(m => m.message_id === msgId)
+      if (msgIndex !== -1 && htmlOutputs[msgIndex]?.content) {
+        viewingHtml.value = htmlOutputs[msgIndex].content
+        // Only flag as historical if this is NOT the most recent html_output
+        const isLatest = msgIndex === htmlOutputs.length - 1
+        isDraftHistory.value = !isLatest
       }
     } catch {
       // If lookup fails just show the current draft silently

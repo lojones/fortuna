@@ -189,7 +189,7 @@ function goToVisualization(viz) {
   if (viz.status === 'draft') {
     router.push(`/chat/${viz.id}`)
   } else {
-    router.push(`/visualization/${viz.id}`)
+    router.push(`/editor/${viz.id}`)
   }
 }
 

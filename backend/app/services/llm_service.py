@@ -24,6 +24,15 @@ def _compute_cost(input_tokens: int, output_tokens: int) -> dict:
     }
 
 
+async def _safe_send(websocket: WebSocket, data: dict) -> bool:
+    """Send JSON to WebSocket, returning False if the client disconnected."""
+    try:
+        await websocket.send_json(data)
+        return True
+    except Exception:
+        return False
+
+
 # Phase 1: Clarification — only asks questions, then produces a spec
 CLARIFICATION_SYSTEM_PROMPT = """You are Fortuna's visualization assistant. Your job is to understand \
 exactly what the user wants to visualize through a conversational exchange.
@@ -291,32 +300,32 @@ class LLMService:
                         pending += text_chunk
                         if MARKER in pending:
                             # Notify client that spec is being built (triggers its own progress bar)
-                            await websocket.send_json({"type": "spec_streaming"})
+                            await _safe_send(websocket, {"type": "spec_streaming"})
                             marker_sent = True
                             parts_at_marker = pending.split(MARKER, 1)
                             safe = parts_at_marker[0]
                             if safe:
-                                await websocket.send_json({"type": "chunk", "content": safe})
+                                await _safe_send(websocket, {"type": "chunk", "content": safe})
                             # Stream the spec content that arrived after the marker in this chunk
                             spec_part = parts_at_marker[1]
                             if spec_part:
-                                await websocket.send_json({"type": "spec_chunk", "content": spec_part})
+                                await _safe_send(websocket, {"type": "spec_chunk", "content": spec_part})
                             pending = ""
                         else:
                             # Send all but the last len(MARKER)-1 chars
                             safe_end = len(pending) - (len(MARKER) - 1)
                             if safe_end > 0:
-                                await websocket.send_json({"type": "chunk", "content": pending[:safe_end]})
+                                await _safe_send(websocket, {"type": "chunk", "content": pending[:safe_end]})
                                 pending = pending[safe_end:]
                     else:
                         # Spec is streaming — forward each chunk to the client
-                        await websocket.send_json({"type": "spec_chunk", "content": text_chunk})
+                        await _safe_send(websocket, {"type": "spec_chunk", "content": text_chunk})
                 # Capture token usage before closing the stream context
                 final_msg = await stream.get_final_message()
                 usage_data = _compute_cost(final_msg.usage.input_tokens, final_msg.usage.output_tokens)
             # Flush any remaining buffered text if no marker was found
             if not marker_sent and pending:
-                await websocket.send_json({"type": "chunk", "content": pending})
+                await _safe_send(websocket, {"type": "chunk", "content": pending})
             logger.info(
                 f"Claude clarification stream complete: {chunk_count} chunks, "
                 f"{len(full_response)} total chars, "
@@ -325,14 +334,14 @@ class LLMService:
             )
         except anthropic.APIStatusError as e:
             logger.error(f"Anthropic API error (status={e.status_code}): {e.message}", exc_info=True)
-            await websocket.send_json({
+            await _safe_send(websocket, {
                 "type": "error",
                 "message": f"LLM API error: {str(e)}",
             })
             return (full_response or "An error occurred.", False, None, _EMPTY_USAGE)
         except Exception as e:
             logger.error(f"Unexpected error during LLM streaming: {e}", exc_info=True)
-            await websocket.send_json({
+            await _safe_send(websocket, {
                 "type": "error",
                 "message": "An unexpected error occurred during generation.",
             })
@@ -351,19 +360,19 @@ class LLMService:
                 if pre_text:
                     # The pre-text was already streamed; send complete for that part
                     pass
-                await websocket.send_json({"type": "complete", "usage": usage_data})
-                await websocket.send_json({
+                await _safe_send(websocket, {"type": "complete", "usage": usage_data})
+                await _safe_send(websocket, {
                     "type": "status",
                     "message": "Generating visualization...",
                 })
                 return (pre_text, True, spec_text, usage_data)
             else:
                 logger.warning("SPEC_READY marker present but spec text empty. Treating as clarification.")
-                await websocket.send_json({"type": "complete", "usage": usage_data})
+                await _safe_send(websocket, {"type": "complete", "usage": usage_data})
                 return (full_response, False, None, usage_data)
         else:
             logger.info(f"Clarification response: {len(full_response)} chars, no spec ready")
-            await websocket.send_json({"type": "complete", "usage": usage_data})
+            await _safe_send(websocket, {"type": "complete", "usage": usage_data})
             return (full_response, False, None, usage_data)
 
     async def generate_html_from_spec(
@@ -439,7 +448,7 @@ class LLMService:
                     html_content += text_chunk
                     chunk_count += 1
                     # Forward each chunk to the client for live viewing
-                    await websocket.send_json({"type": "html_chunk", "content": text_chunk})
+                    await _safe_send(websocket, {"type": "html_chunk", "content": text_chunk})
                 # Capture token usage before closing the stream context
                 final_msg = await stream.get_final_message()
                 usage_data = _compute_cost(final_msg.usage.input_tokens, final_msg.usage.output_tokens)
@@ -463,7 +472,7 @@ class LLMService:
             # Validate
             if html_content.lower().startswith("<!doctype") or html_content.lower().startswith("<html"):
                 logger.info(f"HTML generated successfully: {len(html_content)} chars")
-                await websocket.send_json({
+                await _safe_send(websocket, {
                     "type": "visualization_ready",
                     "html": html_content,
                     "spec": spec_text,
@@ -472,7 +481,7 @@ class LLMService:
                 return (html_content, usage_data)
             else:
                 logger.warning(f"Generated content doesn't look like HTML (starts with: '{html_content[:80]}')")
-                await websocket.send_json({
+                await _safe_send(websocket, {
                     "type": "error",
                     "message": "Failed to generate valid HTML. Please try refining your description.",
                 })
@@ -480,14 +489,14 @@ class LLMService:
 
         except anthropic.APIStatusError as e:
             logger.error(f"Anthropic API error during HTML generation: {e.message}", exc_info=True)
-            await websocket.send_json({
+            await _safe_send(websocket, {
                 "type": "error",
                 "message": f"HTML generation failed: {str(e)}",
             })
             return (None, _EMPTY_USAGE)
         except Exception as e:
             logger.error(f"Unexpected error during HTML generation: {e}", exc_info=True)
-            await websocket.send_json({
+            await _safe_send(websocket, {
                 "type": "error",
                 "message": "An unexpected error occurred during HTML generation.",
             })

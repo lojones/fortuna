@@ -10,6 +10,10 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      '/visualization': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       '/api/chat/ws': {
         target: 'ws://localhost:8000',
         ws: true,

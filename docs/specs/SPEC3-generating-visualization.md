@@ -285,14 +285,112 @@ In draft history mode:
 
 ---
 
-## 9. Summary of Changes Required
+## 9. Resilient LLM Processing on Navigation Away
+
+### Problem
+
+When the user navigates away from the ChatView (e.g., clicks "Back to Dashboard", or the browser navigates), the Vue component's `onUnmounted` lifecycle hook calls `disconnectFromChat()`, which closes the WebSocket connection. On the backend, this raises `WebSocketDisconnect`, which is caught and logged — but the in-flight LLM stream (Phase 1 clarification, spec generation, or Phase 2 HTML generation) is **abandoned**. The Anthropic API call is cancelled, the partial response is lost, the database is never updated with the result, and the user must re-send their message and wait again.
+
+This is especially damaging for spec generation and HTML generation, which can take 30–120 seconds.
+
+### Required Behavior
+
+LLM processing must complete and persist results to the database **regardless of WebSocket connection state**. Navigating away from the chat should not cancel or lose any in-flight work. When the user returns, they see the completed results.
+
+### 9.1 Backend: Decouple LLM Work from WebSocket Lifetime
+
+#### Safe WebSocket Sending
+
+All `websocket.send_json(...)` calls in `llm_service.py` and `chat.py` must be wrapped in a helper that silently catches send failures when the client has disconnected. The LLM stream and database persistence continue regardless.
+
+```python
+async def _safe_send(websocket: WebSocket, data: dict) -> bool:
+    """Send JSON to WebSocket, returning False if the client disconnected."""
+    try:
+        await websocket.send_json(data)
+        return True
+    except Exception:
+        return False
+```
+
+Replace every `await websocket.send_json(...)` in `llm_service.py` with `await _safe_send(websocket, ...)`.
+
+#### Background Task Pattern in `chat.py`
+
+The WebSocket message handler currently `await`s the full LLM pipeline inline — meaning the handler blocks on the LLM response and cannot survive a disconnect. The fix:
+
+1. When a user message arrives, spawn the LLM processing as an **`asyncio.Task`** that the WebSocket handler does **not** await directly.
+2. Store the active task per WebSocket connection so it can be referenced.
+3. On `WebSocketDisconnect`, do **not** cancel the task — let it run to completion.
+4. The task handles all LLM calls and DB persistence independently. WebSocket sends within the task use `_safe_send` to tolerate a disconnected client.
+
+```python
+@router.websocket("/ws/{viz_id}")
+async def chat_websocket(websocket: WebSocket, viz_id: str, token: str = ""):
+    # ... auth, validation, accept ...
+    
+    active_task: Optional[asyncio.Task] = None
+    
+    try:
+        while True:
+            data = await websocket.receive_json()
+            content = data.get("content", "").strip()
+            if not content:
+                await _safe_send(websocket, {"type": "error", "message": "..."})
+                continue
+            
+            # Spawn LLM processing as a fire-and-forget task
+            active_task = asyncio.create_task(
+                _process_user_message(db, viz_id, viz, websocket, content)
+            )
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for viz_id={viz_id}")
+        # Do NOT cancel active_task — let it finish
+```
+
+The `_process_user_message` function contains all the logic currently inline in the `while True` loop (LLM calls, DB writes, WebSocket sends via `_safe_send`).
+
+### 9.2 Frontend: Don't Disconnect While Processing
+
+#### `ChatView.vue`
+
+Change `onUnmounted` behavior: do not call `disconnectFromChat()` while the store indicates active work (`isStreaming`, `isSpecStreaming`, or `isGenerating`). Instead, just let the WebSocket close naturally when the component unmounts — the backend will handle it gracefully.
+
+Actually, a simpler and better approach: **always let the WebSocket close** (the browser does this on navigation anyway), but **never cancel backend work** as a result. The frontend's `disconnectFromChat()` should only reset local UI state, not attempt to signal the backend to stop.
+
+#### `chat.js` Store: Reconnect and Catch Up
+
+When `connectToChat(vizId)` is called and the `onInit` handler fires, the session from the server already contains all completed messages (including any that finished while the user was away). The existing init flow handles this correctly — no additional changes needed for catch-up.
+
+The key behavioral change: if `isStreaming` / `isGenerating` was true before navigation and the user returns, the store's `connectToChat` resets those flags, loads the session (which now has the completed messages), and the UI renders the final state.
+
+### 9.3 Data Integrity
+
+The critical guarantee: **every LLM API call that starts will complete and persist its results to MongoDB**. The only things that may be lost are real-time streaming chunks the user didn't see because they navigated away — but the final result (spec, HTML, cost data) is always saved.
+
+### 9.4 Affected Files
 
 | File | Change |
 |------|--------|
-| `backend/app/services/llm_service.py` | Update `HTML_GENERATION_SYSTEM_PROMPT` with richness directives || `backend/app/services/llm_service.py` | Update `HTML_GENERATION_SYSTEM_PROMPT` with no-internal-scrollbar directive |
-| `backend/app/services/llm_service.py` | Update `HTML_INCREMENTAL_EDIT_SYSTEM_PROMPT` with no-internal-scrollbar directive || `backend/app/services/llm_service.py` | Update `generate_html_from_spec` signature to accept `existing_html` and `previous_spec` |
+| `backend/app/services/llm_service.py` | Replace all `await websocket.send_json(...)` with `await _safe_send(websocket, ...)` |
+| `backend/app/routers/chat.py` | Extract message processing into `_process_user_message()`, spawn as `asyncio.Task`, don't cancel on disconnect |
+| `frontend/src/views/ChatView.vue` | No change needed (disconnect on unmount is fine; backend is resilient) |
+| `frontend/src/stores/chat.js` | No change needed (reconnect loads completed session) |
+
+---
+
+## 10. Summary of Changes Required
+
+| File | Change |
+|------|--------|
+| `backend/app/services/llm_service.py` | Update `HTML_GENERATION_SYSTEM_PROMPT` with richness directives |
+| `backend/app/services/llm_service.py` | Update `HTML_GENERATION_SYSTEM_PROMPT` with no-internal-scrollbar directive |
+| `backend/app/services/llm_service.py` | Update `HTML_INCREMENTAL_EDIT_SYSTEM_PROMPT` with no-internal-scrollbar directive |
+| `backend/app/services/llm_service.py` | Update `generate_html_from_spec` signature to accept `existing_html` and `previous_spec` |
 | `backend/app/services/llm_service.py` | Implement Mode A vs Mode B prompt construction |
 | `backend/app/services/llm_service.py` | Set `max_tokens=80000` for HTML generation |
+| `backend/app/services/llm_service.py` | Add `_safe_send` helper; replace all `websocket.send_json` calls with it |
+| `backend/app/routers/chat.py` | Extract LLM processing into `_process_user_message()`; spawn as `asyncio.Task`; don't cancel on disconnect |
 | `backend/app/routers/chat.py` | Pass `current_draft_html` and `current_draft_spec` to `generate_html_from_spec` when available |
 | `frontend/src/components/chat/ChatMessage.vue` | Pass `?msgId=<message_id>` query param when navigating to visualization view |
 | `frontend/src/views/VisualizationView.vue` | On mount, resolve `msgId` query param to a specific chat message's HTML and display it |

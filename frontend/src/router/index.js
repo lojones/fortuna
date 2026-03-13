@@ -28,7 +28,7 @@ const routes = [
     props: true,
   },
   {
-    path: '/visualization/:vizId',
+    path: '/editor/:vizId',
     name: 'Visualization',
     component: () => import('../views/VisualizationView.vue'),
     meta: { requiresAuth: true },
