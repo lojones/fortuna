@@ -1,4 +1,4 @@
-# Fortuna
+# Visualizr / Fortuna
 
 Fortuna is a web application that lets authenticated users describe complex data scenarios through a conversational chat interface powered by Anthropic Claude. The AI iteratively clarifies requirements through back-and-forth dialogue, then generates rich, self-contained HTML visualizations. Users can publish, version, and iterate on their visualizations.
 
