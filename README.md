@@ -184,6 +184,32 @@ docker-compose up --build
 
 ---
 
+## Forgot Admin Password
+
+bcrypt password hashes stored in MongoDB are **one-way** — they cannot be decrypted.  To regain access, use the included reset script to hash a new password and write it directly to the database.
+
+```bash
+cd backend
+source venv/bin/activate   # or venv\Scripts\activate on Windows
+
+# Interactive (prompts for username and new password)
+python reset_admin_password.py
+
+# Or supply the username explicitly (password will still be prompted, hidden)
+python reset_admin_password.py --username admin
+```
+
+The script will:
+1. Look up the user by username in MongoDB.
+2. Hash the new password with bcrypt (work factor 12).
+3. Update `hashed_password` and `updated_at` in the `users` collection.
+
+You can then log in with the new password immediately.
+
+> **Tip:** If you have also lost your `.env` values and cannot connect to MongoDB, update `MONGODB_URI` in `backend/.env` first, then run the script.
+
+---
+
 ## Running Tests
 
 ```bash
